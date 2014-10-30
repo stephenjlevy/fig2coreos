@@ -30,18 +30,58 @@ class Fig2CoreOS
   def create_service_files
   	@fig.each do |service_name, service|
       image = service["image"]
-      ports = (service["ports"] || []).map{|port| "-p #{port}"}
+      command = service["command"]
+      args = service["args"]
+      ports = []
+      first_port = (service["ports"] || [])[0]
+      first_port_lowercase = String.new
+      if (first_port.is_a? String)
+        first_port_lowercase = first_port.downcase
+      end
+      if (first_port_lowercase == "all")
+        ports = ["-P"]
+      else
+        ports = (service["ports"] || []).map{|port| "-p #{port}"}
+      end
       volumes = (service["volumes"] || []).map{|volume| "-v #{volume}"}
       links = (service["links"] || []).map{|link| "--link #{link}_1:#{link}_1"}
       envs = (service["environment"] || []).map do |env_name, env_value|
         "-e \"#{env_name}=#{env_value}\""
       end
 
+
+
+
+
+      discovery = "ExecStartPost=/bin/sh -c \"until docker inspect -f '{{range $i, $e := .NetworkSettings.Ports }}{{$p := index $e 0}}{{$p.HostPort}}{{end}}' sinatra_1 >/dev/null 2>&1; do sleep 2;done;"
+      stop_discovery = String.new
+      discovery_enabled = false
+      (service["discovery"] || []).map do |service, port|
+        discovery_enabled = true
+        discovery += "/usr/bin/etcdctl set /cust1/sinatra/#{service} %H:$(docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' sinatra_1); "
+      end
+
+      if discovery_enabled
+        discovery += "\""
+      else
+        discovery = String.new
+      end
+
+      if !discovery.empty?
+        stop_discovery = "ExecStop=-/usr/bin/etcd rm /cust1/#{service_name}"
+      end
+
+
+
+
+
       after = if service["links"]
         "#{service["links"].last}.1"
       else
         "docker"
       end
+
+      conflicts = (service["conflicts"] || []).map{|conflict| "Conflicts=#{conflict}\n"}
 
       if @vagrant
         base_path = File.join(@output_dir, "media", "state", "units")
@@ -52,39 +92,28 @@ class Fig2CoreOS
   		File.open(File.join(base_path, "#{service_name}.1.service") , "w") do |file|
         file << <<-eof
 [Unit]
-Description=Run #{service_name}_1
+Description=#{service_name}_1
 After=#{after}.service
 Requires=#{after}.service
+
 
 [Service]
 Restart=always
 RestartSec=10s
-ExecStartPre=/usr/bin/docker ps -a -q | xargs docker rm
-ExecStart=/usr/bin/docker run -rm -name #{service_name}_1 #{volumes.join(" ")} #{links.join(" ")} #{envs.join(" ")} #{ports.join(" ")} #{image}
-ExecStartPost=/usr/bin/docker ps -a -q | xargs docker rm
-ExecStop=/usr/bin/docker kill #{service_name}_1
-ExecStopPost=/usr/bin/docker ps -a -q | xargs docker rm
+ExecStartPre=-/usr/bin/docker kill #{service_name}_1
+ExecStartPre=-/usr/bin/docker rm #{service_name}_1
+ExecStart=/usr/bin/docker run --name #{service_name}_1 #{volumes.join(" ")} #{links.join(" ")} #{envs.join(" ")} #{ports.join(" ")} #{image} #{command} #{args}
+#{discovery}
+#{stop_discovery}
+ExecStop=-/usr/bin/docker stop #{service_name}_1
 
-[Install]
-WantedBy=local.target
+[X-Fleet]
+#{conflicts.join(" ")}
+
 eof
   		end
 
-      File.open(File.join(base_path, "#{service_name}-discovery.1.service"), "w") do |file|
-        port = %{\\"port\\": #{service["ports"].first.to_s.split(":").first}, } if service["ports"].to_a.size > 0
-        file << <<-eof
-[Unit]
-Description=Announce #{service_name}_1
-BindsTo=#{service_name}.1.service
 
-[Service]
-ExecStart=/bin/sh -c "while true; do etcdctl set /services/#{service_name}/#{service_name}_1 '{ \\"host\\": \\"%H\\", #{port}\\"version\\": \\"52c7248a14\\" }' --ttl 60;sleep 45;done"
-ExecStop=/usr/bin/etcdctl rm /services/#{service_name}/#{service_name}_1
-
-[X-Fleet]
-X-ConditionMachineOf=#{service_name}.1.service
-eof
-      end
     end
   end
 

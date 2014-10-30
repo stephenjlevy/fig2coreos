@@ -49,16 +49,12 @@ class Fig2CoreOS
         "-e \"#{env_name}=#{env_value}\""
       end
 
-
-
-
-
-      discovery = "ExecStartPost=/bin/sh -c \"until docker inspect -f '{{range $i, $e := .NetworkSettings.Ports }}{{$p := index $e 0}}{{$p.HostPort}}{{end}}' sinatra_1 >/dev/null 2>&1; do sleep 2;done;"
+      discovery = "ExecStartPost=/bin/sh -c \""
       stop_discovery = String.new
       discovery_enabled = false
       (service["discovery"] || []).map do |service, port|
         discovery_enabled = true
-        discovery += "/usr/bin/etcdctl set /cust1/sinatra/#{service} %H:$(docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' sinatra_1); "
+        discovery += "until docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' #{service_name}_1 >/dev/null 2>&1; do sleep 2;done; /usr/bin/etcdctl set /cust1/sinatra/#{service} %H:$(docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' #{service_name}_1); "
       end
 
       if discovery_enabled
@@ -71,17 +67,27 @@ class Fig2CoreOS
         stop_discovery = "ExecStop=-/usr/bin/etcd rm /cust1/#{service_name}"
       end
 
-
-
-
-
       after = if service["links"]
         "#{service["links"].last}.1"
       else
         "docker"
       end
 
-      conflicts = (service["conflicts"] || []).map{|conflict| "Conflicts=#{conflict}\n"}
+      #FIXME: Handle wildcards
+      conflicts = (service["conflicts"] || []).map{|conflict| "Conflicts=#{conflict}.1.service"}
+
+      machines_of = (service["machine_of"] || []).map{|machine_of| "MachineOf=#{machine_of}.1.service"}
+
+      machine_ids = (service["machine_id"] || []).map{|machine_id| "MachineId=#{machine_id}"}
+
+      machine_metadata_info = (service["machine_metadata"] || []).map{|machine_metadata| "MachineMetadata=#{machine_metadata}"}
+
+      binds_to_units = (service["binds_to"] || []).map{|binds_to| "BindsTo=#{binds_to}.1.service"}
+
+      global = service["global"]
+      if global == true
+        global = "Global=true"
+      end
 
       if @vagrant
         base_path = File.join(@output_dir, "media", "state", "units")
@@ -95,6 +101,7 @@ class Fig2CoreOS
 Description=#{service_name}_1
 After=#{after}.service
 Requires=#{after}.service
+#{binds_to_units.join("\n")}
 
 
 [Service]
@@ -108,8 +115,11 @@ ExecStart=/usr/bin/docker run --name #{service_name}_1 #{volumes.join(" ")} #{li
 ExecStop=-/usr/bin/docker stop #{service_name}_1
 
 [X-Fleet]
-#{conflicts.join(" ")}
-
+#{conflicts.join("\n")}
+#{machines_of.join("\n")}
+#{machine_ids.join("\n")}
+#{machine_metadata_info.join("\n")}
+#{global}
 eof
   		end
 

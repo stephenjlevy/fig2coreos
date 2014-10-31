@@ -2,16 +2,12 @@
 require 'optparse'
 require File.expand_path(File.join(File.dirname(__FILE__), "..", "lib", "fig2coreos"))
 
-FIG2COREOS_BANNER = "Usage: fig2coreos [options] APP_NAME FIG_YAML OUTPUT_DIRECTORY"
+FIG2COREOS_BANNER = "Usage: fig2coreos [options] CUSTOMER_NAME APP_NAME FIG_YAML OUTPUT_DIRECTORY"
 
 options = {type: "fleet"}
 
 opt_parser = OptionParser.new do |opts|
   opts.banner = FIG2COREOS_BANNER
-
-  opts.on("-t", "--type TYPE", "Output type: fleet (default) or vagrant (generate a Vagrantfile)") do |type|
-    options[:type] = type
-  end
 
   opts.on( '-h', '--help', 'Display this screen' ) do
     puts opts
@@ -26,21 +22,16 @@ if ARGV[0].nil?
 	exit -1
 end
 
-if !File.file?(File.expand_path(ARGV[1].to_s))
+if !File.file?(File.expand_path(ARGV[2].to_s))
 	puts opt_parser
 	exit -1
 end
 
-if !ARGV[2] || !File.directory?(File.expand_path(ARGV[2].to_s))
-	if !FileUtils.mkdir_p(File.join(ARGV[2].to_s, "media", "state", "units"))
+if !ARGV[2] || !File.directory?(File.expand_path(ARGV[3].to_s))
+	if !FileUtils.mkdir_p(File.join(ARGV[3].to_s, "media", "state", "units"))
 		puts opt_parser
 		exit -1
 	end
 end
 
-if options[:type] == "vagrant" && Gem::Version.new(`vagrant --version`.split.last) < Gem::Version.new("1.4.3")
-	puts "[ERROR] Your version of vagrant (#{vagrant_version}) is out of date, please upgrade to at least 1.4.3 at http://www.vagrantup.com/downloads.html or change the --type"
-	exit -1
-end
-
-puts Fig2CoreOS.convert(ARGV[0], ARGV[1], ARGV[2], options)
+puts Fig2CoreOS.convert(ARGV[0], ARGV[1], ARGV[2], ARGV[3], options)

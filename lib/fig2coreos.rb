@@ -54,8 +54,8 @@ class Fig2CoreOS
       discovery_enabled = false
       (service["discovery"] || []).map do |service, port|
         discovery_enabled = true
-        discovery += "until docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' #{@cust_name}.#{service_name}#{@metadata}.%i >/dev/null 2>&1; do sleep 2;done; /usr/bin/etcdctl set /#{@cust_name}/#{@app_name}/#{service}#{@metadata}.%i %H:$(docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' #{@cust_name}.#{service_name}#{@metadata}.%i); "
-        stop_discovery += "/usr/bin/etcdctl rm /#{@cust_name}/#{@app_name}/#{service}#{@metadata}.%i; "
+        discovery += "until docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' #{@cust_name}.#{service_name}#{@metadata}.%i >/dev/null 2>&1; do sleep 2;done; /usr/bin/etcdctl set /apps/#{@cust_name}/#{@app_name}/#{service}#{@metadata}.%i %H:$(docker inspect --format='{{(index (index .NetworkSettings.Ports \\\"#{port}/tcp\\\") 0).HostPort}}' #{@cust_name}.#{service_name}#{@metadata}.%i); "
+        stop_discovery += "/usr/bin/etcdctl rm /apps/#{@cust_name}/#{@app_name}/#{service}#{@metadata}.%i; "
       end
 
       if discovery_enabled
